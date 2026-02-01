@@ -113,6 +113,134 @@ vtable이 필요 없으면 아예 만들지 않는다.
 
 ---
 
+## Rust에서 trait은 struct가 아니다
+
+trait은 데이터가 없는 **계약(자격증)**이다. 실제 데이터는 struct에 있다.
+
+```rust
+trait Animal {         // 계약만 정의. 데이터 없음.
+    fn speak(&self);
+}
+
+struct Dog { name: String }  // 데이터
+struct Cat { name: String }  // 데이터
+struct Rock;                 // 데이터
+
+impl Animal for Dog { ... }  // Dog에 Animal 자격 부여 → vtable 생성
+impl Animal for Cat { ... }  // Cat에 Animal 자격 부여 → vtable 생성
+// Rock은 구현 안 함          // 자격 없음 → vtable 없음 → &dyn Animal로 사용 불가
+```
+
+```mermaid
+graph LR
+    T["trait Animal<br/>(계약, 데이터 없음)"]
+    T --> |"impl for"| D["struct Dog ✅<br/>vtable 생성됨"]
+    T --> |"impl for"| C["struct Cat ✅<br/>vtable 생성됨"]
+    T -.- |"구현 안 함"| R["struct Rock ❌<br/>vtable 없음<br/>&dyn Animal 사용 불가"]
+```
+
+`impl Animal for X`를 하지 않은 타입은 `&dyn Animal`로 받을 수 없다. 컴파일 에러가 난다.
+이것이 Rust의 안전성: **vtable에 등록되지 않은 타입은 런타임에 도달할 수 없다.**
+
+---
+
+## trait의 3가지 역할
+
+trait은 다형성만을 위한 것이 아니다. 하나의 도구로 3가지 역할을 한다.
+
+```mermaid
+graph TD
+    Trait["trait"] --> Role1["1. 다형성<br/>여러 타입을 같은 방식으로 다루기"]
+    Trait --> Role2["2. 제네릭 제약<br/>함수에 아무 타입이나 넣지 못하게 제한"]
+    Trait --> Role3["3. 기능 부여<br/>이미 존재하는 타입에 메서드 추가"]
+
+    Role1 --> Ex1["&dyn Animal, Box&lt;dyn Animal&gt;"]
+    Role2 --> Ex2["fn foo&lt;P: Pattern&gt;(pat: P)<br/>→ Pattern 구현한 타입만 받음"]
+    Role3 --> Ex3["impl FromStr for u32<br/>→ u32가 .parse() 가능해짐"]
+```
+
+다른 언어에서는 interface, 제네릭 제약, 확장 함수가 별개인데, Rust는 trait 하나로 전부 처리한다.
+
+---
+
+## `&impl Trait` vs `&dyn Trait`
+
+둘 다 "trait을 구현한 타입을 받겠다"이지만, **타입을 언제 결정하느냐**가 다르다.
+
+### `&impl Trait` — 컴파일 타임에 결정 (정적 디스패치)
+
+```rust
+fn interact(a: &impl Animal) {
+    a.speak();
+}
+
+interact(&dog);  // 컴파일러가 Dog 전용 함수 생성
+interact(&cat);  // 컴파일러가 Cat 전용 함수 생성
+```
+
+```
+컴파일 후:
+interact_dog(a: &Dog) { ... }  ← Dog 전용, dog_speak() 직접 호출
+interact_cat(a: &Cat) { ... }  ← Cat 전용, cat_speak() 직접 호출
+
+→ vtable 없음. 비용 0. 대신 바이너리 크기 커짐.
+```
+
+### `&dyn Trait` — 런타임에 결정 (동적 디스패치)
+
+```rust
+fn interact(a: &dyn Animal) {
+    a.speak();
+}
+
+interact(&dog);  // 런타임에 Dog vtable 조회
+interact(&cat);  // 런타임에 Cat vtable 조회
+```
+
+```
+컴파일 후:
+interact(a: &dyn Animal) { ... }  ← 함수 1개, vtable 조회 코드 포함
+
+→ vtable 조회 비용 있음. 대신 바이너리 작음.
+```
+
+### `&dyn`만 가능한 것: 서로 다른 타입을 한 컬렉션에 담기
+
+```rust
+// &impl은 불가능 - Dog과 Cat은 다른 타입
+let animals: Vec<&impl Animal> = vec![&dog, &cat];  // ❌ 컴파일 에러
+
+// &dyn은 가능 - vtable을 통해 런타임에 구분
+let animals: Vec<&dyn Animal> = vec![&dog, &cat];   // ✅
+for a in &animals {
+    a.speak();  // 각각의 vtable을 따라감
+}
+```
+
+### 비교
+
+| | `&impl Trait` | `&dyn Trait` |
+|---|---|---|
+| 타입 결정 | 컴파일 타임 | 런타임 |
+| vtable | 없음 | 있음 |
+| 성능 | 빠름 (직접 호출) | 약간 느림 (간접 호출) |
+| 여러 타입 섞기 | 불가능 | 가능 |
+| 바이너리 크기 | 커짐 (타입별 함수 복사) | 작음 (함수 하나) |
+
+---
+
+## Rust trait의 3가지 장점 요약
+
+```mermaid
+graph TD
+    T["Rust의 Trait 시스템"]
+    T --> A1["1. 인지적 명확성<br/>trait = 계약, struct = 데이터<br/>역할이 분리되어 이해하기 쉬움"]
+    T --> A2["2. 컴파일 타임 안전성<br/>impl 하지 않은 타입은 &dyn으로 사용 불가<br/>vtable에 빠진 함수도 컴파일 에러"]
+    T --> A3["3. 비용 선택 가능<br/>&impl → vtable 없음, 비용 0<br/>&dyn → vtable 사용, 필요할 때만"]
+```
+
+---
+
 ## 전체 구조 비교
 
 ```mermaid
