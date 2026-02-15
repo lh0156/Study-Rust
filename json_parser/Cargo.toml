@@ -1,0 +1,11 @@
+[package]
+name = "json_parser"
+version = "0.1.0"
+edition = "2021"
+description = "Study: build a JSON tokenizer & parser from scratch"
+license = "UNLICENSED"
+
+[lib]
+name = "json_parser"
+path = "src/lib.rs"
+
