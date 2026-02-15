@@ -22,7 +22,7 @@ impl Student {
         }
     }
 
-    pub fn average_score(&self) -> f32 {
+    pub fn get_average_score(&self) -> f32 {
         if self.score_list.is_empty() {
             return 0.0;
         }
@@ -31,11 +31,11 @@ impl Student {
         sum as f32 / self.score_list.len() as f32
     }
 
-    pub fn max_score(&self) -> Option<u32> {
+    pub fn get_max_score(&self) -> Option<u32> {
         self.score_list.iter().copied().max()
     }
 
-    pub fn min_score(&self) -> Option<u32> {
+    pub fn get_min_score(&self) -> Option<u32> {
         self.score_list.iter().copied().min()
     }
 }
